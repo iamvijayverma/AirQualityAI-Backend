@@ -1,0 +1,17 @@
+pandas
+numpy
+scikit-learn
+xgboost
+streamlit
+fastapi
+uvicorn
+folium
+plotly
+shap
+requests
+sqlalchemy
+psycopg2-binary
+langchain
+google-generativeai
+faiss-cpu
+python-dotenv

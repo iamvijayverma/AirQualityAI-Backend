@@ -1,225 +1,379 @@
-import os
-import json
-import logging
-import joblib
-import numpy as np
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from typing import List
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  TrendingUp,
+  Activity,
+  BarChart3,
+  PieChart,
+} from 'lucide-react';
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart as RechartsPie,
+  Pie,
+  Cell,
+} from 'recharts';
 
-# Initialize FastAPI App
-app = FastAPI(
-    title="Urban Air Quality Intelligence API",
-    description="Backend API for AQI Forecasting, Source Attribution, and Advisory Agents.",
-    version="1.0.0"
-)
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Card, CardHeader } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { LoadingOverlay } from '../components/ui/Loading';
 
-# Global variables for models
-forecast_model = None
-source_model = None
+import { forecastApi } from '../services/api';
+import { mockForecastResponse } from '../data/mockData';
 
-# Constants
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models')
-# Fallback if running directly in the root directory
-if not os.path.exists(MODEL_DIR):
-    MODEL_DIR = 'models'
+import type {
+  ForecastRequest,
+  ForecastResponse,
+} from '../types';
 
-FORECAST_MODEL_PATH = os.path.join(MODEL_DIR, 'aqi_model.pkl')
-SOURCE_MODEL_PATH = os.path.join(MODEL_DIR, 'source_model.pkl')
+const COLORS = [
+  '#3b82f6',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+];
 
-# ==============================================================================
-# PYDANTIC SCHEMAS
-# ==============================================================================
-class ForecastRequest(BaseModel):
-    aqi_1: float = Field(..., description="AQI value 1 hour ago")
-    aqi_6: float = Field(..., description="AQI value 6 hours ago")
-    aqi_24: float = Field(..., description="AQI value 24 hours ago")
+const AQIForecast = () => {
+  const [formData, setFormData] =
+    useState<ForecastRequest>({
+      aqi_1: 150,
+      aqi_6: 145,
+      aqi_24: 138,
+    });
 
-class SourceAttributionRequest(BaseModel):
-    pm25: float = Field(..., description="Ambient PM2.5 Concentration")
-    pm10: float = Field(..., description="Ambient PM10 Concentration")
-    no2: float = Field(..., description="Gas Phase NO2 Tracer")
-    traffic_density: float = Field(..., description="Traffic Density Index")
-    construction_index: float = Field(..., description="Construction Velocity Index")
-    industrial_index: float = Field(..., description="Industrial Operation Metric")
+  const [loading, setLoading] = useState(false);
 
-class CitizenAdvisoryRequest(BaseModel):
-    aqi: int = Field(..., description="Current Air Quality Index")
-    age: int = Field(..., description="Citizen's Age")
-    condition: str = Field(..., description="Pre-existing Medical Conditions")
-    language: str = Field(default="English", description="Target Language (English/Hindi)")
+  const [error, setError] = useState('');
 
-class EnforcementRequest(BaseModel):
-    aqi: int = Field(..., description="Current Air Quality Index")
-    traffic_pct: float = Field(..., description="Traffic Sector Contribution Percentage")
-    construction_pct: float = Field(..., description="Construction Sector Contribution Percentage")
-    industry_pct: float = Field(..., description="Industrial Sector Contribution Percentage")
+  const [result, setResult] =
+    useState<ForecastResponse>(mockForecastResponse);
 
-# ==============================================================================
-# LIFESPAN / STARTUP
-# ==============================================================================
-@app.on_event("startup")
-async def load_models():
-    global forecast_model, source_model
-    try:
-        if os.path.exists(FORECAST_MODEL_PATH):
-            forecast_model = joblib.load(FORECAST_MODEL_PATH)
-            logger.info(f"Loaded Forecast Model from {FORECAST_MODEL_PATH}")
-        else:
-            logger.warning("Forecast Model not found. Endpoints will use rule-based fallbacks.")
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
 
-        if os.path.exists(SOURCE_MODEL_PATH):
-            source_model = joblib.load(SOURCE_MODEL_PATH)
-            logger.info(f"Loaded Source Attribution Model from {SOURCE_MODEL_PATH}")
-        else:
-            logger.warning("Source Attribution Model not found. Endpoints will use rule-based fallbacks.")
-    except Exception as e:
-        logger.error(f"Error loading machine learning models: {e}")
+    setLoading(true);
+    setError('');
 
-# ==============================================================================
-# ENDPOINTS
-# ==============================================================================
-@app.get("/")
-async def root():
-    return {
-        "status": "online",
-        "message": "Welcome to the AI-Powered Urban Air Quality Intelligence Platform API"
+    try {
+      const response =
+        await forecastApi.predict(formData);
+
+      setResult({
+        predicted_aqi:
+          response.predicted_aqi ??
+          mockForecastResponse.predicted_aqi,
+
+        confidence:
+          response.confidence ??
+          mockForecastResponse.confidence,
+
+        trend:
+          response.trend ??
+          mockForecastResponse.trend,
+
+        forecast_24h:
+          response.forecast_24h ??
+          mockForecastResponse.forecast_24h,
+
+        sources:
+          response.sources ??
+          mockForecastResponse.sources,
+      });
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        'Backend unavailable. Showing demo forecast.'
+      );
+
+      setResult(mockForecastResponse);
+    } finally {
+      setLoading(false);
     }
+  };
 
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "forecast_model_loaded": forecast_model is not None,
-        "source_model_loaded": source_model is not None
+  const getTrendIcon = (
+    trend?: string
+  ) => {
+    switch (trend) {
+      case 'increasing':
+        return (
+          <TrendingUp className="w-5 h-5 text-red-500" />
+        );
+
+      case 'decreasing':
+        return (
+          <TrendingUp className="w-5 h-5 text-green-500 rotate-180" />
+        );
+
+      default:
+        return (
+          <Activity className="w-5 h-5 text-blue-500" />
+        );
     }
+  };
 
-@app.post("/forecast")
-async def predict_aqi(request: ForecastRequest):
-    features = np.array([[request.aqi_1, request.aqi_6, request.aqi_24]])
-    
-    if forecast_model:
-        try:
-            prediction = forecast_model.predict(features)[0]
-            return {"target_hour": "+1H", "predicted_aqi": round(float(prediction), 2), "method": "RandomForest"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Model prediction error: {str(e)}")
-    else:
-        # Fallback heuristic
-        pred = (request.aqi_1 * 0.6) + (request.aqi_6 * 0.3) + (request.aqi_24 * 0.1)
-        return {"target_hour": "+1H", "predicted_aqi": round(pred, 2), "method": "Heuristic_Fallback"}
+  const forecastData =
+    result.forecast_24h ??
+    mockForecastResponse.forecast_24h ??
+    [];
 
-@app.post("/source-attribution")
-async def attribute_source(request: SourceAttributionRequest):
-    features = np.array([[
-        request.pm25, request.pm10, request.no2, 
-        request.traffic_density, request.construction_index, request.industrial_index
-    ]])
-    
-    if source_model:
-        try:
-            predicted_class = source_model.predict(features)[0]
-            probabilities = source_model.predict_proba(features)[0]
-            classes = source_model.classes_
+  const sourceData =
+    result.sources ??
+    mockForecastResponse.sources ??
+    [];
+
+  return (
+      return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="space-y-6"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-secondary-900 dark:text-white">
+            AQI Forecast
+          </h1>
+          <p className="text-secondary-500 dark:text-secondary-400 mt-1">
+            Predict air quality using AI-powered analysis
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Input Form */}
+        <Card className="lg:col-span-1 relative">
+          {loading && (
+            <LoadingOverlay text="Analyzing..." />
+          )}
+
+          <CardHeader
+            title="Input Parameters"
+            subtitle="Enter recent AQI readings"
+            icon={<BarChart3 className="w-5 h-5" />}
+          />
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Input
+              label="AQI (Last 1 Hour)"
+              type="number"
+              value={formData.aqi_1}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  aqi_1: Number(e.target.value),
+                })
+              }
+            />
+
+            <Input
+              label="AQI (6 Hour Average)"
+              type="number"
+              value={formData.aqi_6}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  aqi_6: Number(e.target.value),
+                })
+              }
+            />
+
+            <Input
+              label="AQI (24 Hour Average)"
+              type="number"
+              value={formData.aqi_24}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  aqi_24: Number(e.target.value),
+                })
+              }
+            />
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full"
+              loading={loading}
+            >
+              Generate Forecast
+            </Button>
+          </form>
+        </Card>
+
+        {/* Results Panel */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            prob_dict = {str(cls): round(float(prob), 4) for cls, prob in zip(classes, probabilities)}
-            
-            return {
-                "primary_source": predicted_class,
-                "probabilities": prob_dict,
-                "method": "RandomForestClassifier"
-            }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Model prediction error: {str(e)}")
-    else:
-        # Fallback deterministic rules
-        scores = {
-            'Traffic': request.traffic_density * 1.2 + request.no2 * 0.8,
-            'Construction': request.construction_index * 2.0 + (request.pm10 - request.pm25) * 0.5,
-            'Industry': request.industrial_index * 1.5 + request.pm25 * 0.5,
-            'Mixed': (request.traffic_density + request.construction_index + request.industrial_index) * 0.6
-        }
-        total_score = sum(scores.values())
-        prob_dict = {k: round(v / total_score, 4) for k, v in scores.items()}
-        primary = max(scores, key=scores.get)
-        
-        return {
-            "primary_source": primary,
-            "probabilities": prob_dict,
-            "method": "Heuristic_Fallback"
-        }
+            {/* AQI Card */}
+            <Card>
+              <div className="text-center">
+                <p className="text-sm text-secondary-500 mb-2">
+                  Predicted AQI
+                </p>
 
-@app.post("/citizen-advisory")
-async def get_advisory(request: CitizenAdvisoryRequest):
-    is_hindi = request.language.lower() == "hindi"
-    is_vulnerable = "asthma" in request.condition.lower() or "heart" in request.condition.lower()
+                <motion.p
+                  key={result.predicted_aqi}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-4xl font-bold"
+                >
+                  {result.predicted_aqi}
+                </motion.p>
 
-    if request.aqi > 300 or (request.aqi > 200 and is_vulnerable):
-        risk = "Severe"
-        primary = "हवा की गुणवत्ता बहुत खराब है। कृपया घर के अंदर रहें।" if is_hindi else "Air quality is severely degraded. Please remain indoors."
-        precautions = [
-            "बाहर जाते समय N95 मास्क पहनें।" if is_hindi else "Wear an N95 mask if you must go outside.",
-            "सभी बाहरी व्यायाम बंद करें।" if is_hindi else "Stop all outdoor physical exertion."
-        ]
-        mask = True
-    elif request.aqi <= 100:
-        risk = "Low"
-        primary = "हवा की गुणवत्ता अच्छी है।" if is_hindi else "Air quality is good. Safe for normal activities."
-        precautions = [
-            "आप सुरक्षित रूप से बाहर व्यायाम कर सकते हैं।" if is_hindi else "You may safely exercise outdoors."
-        ]
-        mask = False
-    else:
-        risk = "Moderate"
-        primary = "हवा की गुणवत्ता मध्यम है।" if is_hindi else "Air quality is moderate. Exercise caution."
-        precautions = [
-            "भारी बाहरी काम कम करें।" if is_hindi else "Reduce heavy outdoor exertion."
-        ]
-        mask = is_vulnerable
-        
-    return {
-        "risk_level": risk,
-        "primary_advisory": primary,
-        "precautions": precautions,
-        "mask_recommended": mask
-    }
+                <Badge
+                  className="mt-2"
+                  variant={
+                    result.predicted_aqi <= 100
+                      ? 'success'
+                      : result.predicted_aqi <= 200
+                      ? 'warning'
+                      : 'danger'
+                  }
+                >
+                  AQI Level
+                </Badge>
+              </div>
+            </Card>
 
-@app.post("/enforcement")
-async def generate_enforcement(request: EnforcementRequest):
-    risk = "Severe" if request.aqi > 300 else ("High" if request.aqi > 200 else "Moderate")
-    actions = []
-    reduction_estimate = 0
-    
-    if request.traffic_pct > 50:
-        actions.extend(["Implement odd-even vehicle restrictions.", "Restrict heavy diesel trucks."])
-        reduction_estimate += 35
-    if request.construction_pct > 30:
-        actions.extend(["Mandate continuous dust suppression.", "Deploy site inspections."])
-        reduction_estimate += 20
-    if request.industry_pct > 40:
-        actions.extend(["Initiate emission audits.", "Enforce temporary operational rollbacks."])
-        reduction_estimate += 45
+            {/* Confidence Card */}
+            <Card>
+              <div className="text-center">
+                <p className="text-sm text-secondary-500 mb-2">
+                  Confidence
+                </p>
 
-    if not actions:
-        actions.append("Maintain routine patrol sweeps.")
-        reduction_estimate = 5
+                <motion.p
+                  key={result.confidence}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-4xl font-bold text-primary-500"
+                >
+                  {((result.confidence ?? 0) * 100).toFixed(0)}%
+                </motion.p>
+              </div>
+            </Card>
 
-    base_aqi_factor = min((request.aqi / 500) * 50, 50)
-    max_sector_factor = min(max(request.traffic_pct, request.construction_pct, request.industry_pct) * 0.5, 50)
-    score = int(base_aqi_factor + max_sector_factor)
+            {/* Trend Card */}
+            <Card>
+              <div className="text-center">
+                <p className="text-sm text-secondary-500 mb-2">
+                  Trend
+                </p>
 
-    return {
-        "risk_level": risk,
-        "priority_actions": actions,
-        "expected_aqi_reduction": f"Estimated reduction of {reduction_estimate - 5}-{reduction_estimate + 10} AQI points.",
-        "enforcement_score": min(score, 100)
-    }
+                <div className="flex items-center justify-center gap-2">
+                  {getTrendIcon(result.trend)}
 
-if __name__ == "__main__":
-    import uvicorn
-    # Allows the script to be run directly via `python api/main.py`
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+                  <motion.p
+                    className="text-xl font-bold capitalize"
+                  >
+                    {result.trend ?? 'stable'}
+                  </motion.p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Forecast Chart */}
+          <Card>
+            <CardHeader
+              title="24 Hour Forecast"
+              subtitle="AQI trend prediction"
+              icon={<TrendingUp className="w-5 h-5" />}
+            />
+
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={forecastData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="hour" />
+                  <YAxis />
+
+                  <Tooltip />
+
+                  <Area
+                    type="monotone"
+                    dataKey="aqi"
+                    stroke="#3b82f6"
+                    fill="#3b82f6"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+                        <Pie
+                data={sourceData}
+                cx="50%"
+                cy="50%"
+                innerRadius={40}
+                outerRadius={70}
+                paddingAngle={2}
+                dataKey="percentage"
+              >
+                {sourceData.map((_, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                  />
+                ))}
+              </Pie>
+
+              <Tooltip />
+            </RechartsPie>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-col justify-center gap-3">
+          {sourceData.map((source, index) => (
+            <div
+              key={source.name}
+              className="flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{
+                    backgroundColor:
+                      COLORS[index % COLORS.length],
+                  }}
+                />
+                <span className="text-sm text-secondary-700 dark:text-secondary-300">
+                  {source.name}
+                </span>
+              </div>
+
+              <span className="text-sm font-medium text-secondary-900 dark:text-white">
+                {source.percentage}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  </div>
+</div>
+    </motion.div>
+  );
+};
+
+export default AQIForecast;

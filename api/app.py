@@ -6,6 +6,79 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/forecast")
+def forecast(data: dict):
+    lag_1 = data.get("aqi_1", 100)
+    lag_6 = data.get("aqi_6", 100)
+    lag_24 = data.get("aqi_24", 100)
+
+    prediction = (lag_1 * 0.6) + (lag_6 * 0.3) + (lag_24 * 0.1)
+
+    return {
+        "predicted_aqi": prediction,
+        "confidence": 0.85,
+        "trend": "increasing",
+        "forecast_24h": [
+            {"hour": i, "aqi": prediction + np.random.randint(-10, 10)}
+            for i in range(24)
+        ],
+        "sources": [
+            {"name": "Traffic", "percentage": 40},
+            {"name": "Industry", "percentage": 35},
+            {"name": "Construction", "percentage": 25}
+        ]
+    }
+
+@app.post("/source-attribution")
+def source_attr():
+    return {
+        "probabilities": {
+            "Traffic": 0.4,
+            "Industry": 0.3,
+            "Construction": 0.2,
+            "Mixed": 0.1
+        }
+    }
+
+
+
+
+
+
+
 
 # --- Page Configuration ---
 st.set_page_config(
